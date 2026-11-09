@@ -1,6 +1,18 @@
 # 2248 OVERDRIVE
 
-Buildless static game in dist/. Open via HTTP. Competition rules version: overdrive-2.
+Buildless static game in dist/. Competition rules version: overdrive-2.
+
+## 起動とFirebase設定
+
+リポジトリのルートで `python3 -m http.server 8000 --directory dist` を実行し、`http://localhost:8000` を開きます。設定なしならローカル保存で遊べます。Firebase SDK・認証・DBには接続しません。
+
+クラウド同期を使う場合だけ、`dist/firebase-config.example.json` を `dist/firebase-config.json` にコピーし、自分のFirebaseコンソールに表示されるWebアプリ設定に置き換えてください。必須は `apiKey`・`authDomain`・`projectId`・`appId`。追加のFirebase設定項目も記述できます。
+
+`firebase-config.json` はGit管理対象外です。ホスティング先にもこのファイルを別途配置してください。FirebaseのWeb設定はブラウザから見える公開用識別情報であり、秘密鍵を入れる場所ではありません。管理者用サービスアカウントは使いません。
+
+設定がない場合は「クラウド同期 未設定」、設定不正なら「設定エラー」と表示され、ゲームと端末内の記録保存はそのまま使えます。設定ファイルは起動時に読み込むので、変更後は再読み込みしてください。
+
+設定値を差し替えても既存ブラウザのローカル記録は残り、ログイン後に選んだFirebaseへ同期されます。別の環境の記録を混ぜたくない場合はブラウザプロファイルを分けてください。
 
 - Normal mode migrates overdrive2248-v1 without deleting it; legacy numbers convert to BigInt (rounding already present in an old score cannot be recovered).
 - Normal saves remain separate from competition. Scores use decimal strings for local/Firestore persistence and BigInt arithmetic.
@@ -12,14 +24,14 @@ Buildless static game in dist/. Open via HTTP. Competition rules version: overdr
 
 ## Firebase setup
 
-Project: overdrive-9cc31. Firebase web config is public client configuration, not an administrator credential.
+Use your own Firebase project. Firebase web config is public client configuration, not an administrator credential.
 
 1. Create Firestore **Standard**, **Native mode**, default database `(default)` (not SQL Connect / Cloud SQL). Production mode initially denies client access.
-2. Enable Google provider in Authentication. Add `dopagaki-2248.browncrown14.chatgpt.site` to authorized domains.
+2. Enable Google provider in Authentication. Add your deployment hostname to authorized domains (and `localhost` for local development).
 3. In the game, sign in with Google, open 同期設定, and copy 自分専用ルール. Paste in Firestore Rules and Publish. The generated rules restrict all record access to that single UID.
 4. Press 同期する. Records sync under `users/{uid}/records/{recordId}`. Active boards and normal saves stay browser-local. No server credentials, Cloud Functions, Analytics, Storage, or public leaderboard needed.
 
-The client loads Firebase SDK from Google's CDN and restores the Google sign-in session automatically. Cloud errors never discard local records. Firebase project resources / provider / authorized domains / rules cannot be configured by merely supplying firebaseConfig; the owner must complete these console steps. Cross-device Google login and actual Firestore read/write require live account verification.
+Only when a valid configuration is present, the client loads Firebase SDK from Google's CDN and restores the Google sign-in session automatically. Cloud errors never discard local records. Firebase project resources / provider / authorized domains / rules cannot be configured by merely supplying firebaseConfig; the owner must complete these console steps. Cross-device Google login and actual Firestore read/write require live account verification.
 
 Tests: `node tests/game.test.cjs`. Browser preview via Sites preview daemon.
 

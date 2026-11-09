@@ -1,0 +1,7 @@
+# Deployment-specific Firebase web configuration (public client values).
+/dist/firebase-config.json
+.env
+.env.*
+!.env.example
+node_modules/
+.DS_Store

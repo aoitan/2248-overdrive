@@ -1,0 +1,21 @@
+const assert=require('node:assert/strict');const {game}=require('./harness.cjs');
+const g=game();assert.equal(g.run('board.length'),35);assert.equal(g.run('typeof score'),'bigint');
+g.run("startGame('score60','REPRO')");const initial=g.run('encode({board,specials,rngDeal,rngRescue})');g.run("startGame('score60','REPRO')");assert.equal(g.run('encode({board,specials,rngDeal,rngRescue})'),initial);
+g.run('const expected=Array.from({length:20},dealRandom);initRandom("REPRO");Array.from({length:35},rollSpecial);Array.from({length:35},()=>dealRandom());for(let i=0;i<100;i++)rescueRandom();');assert.equal(g.run('encode(Array.from({length:20},dealRandom))'),g.run('encode(expected)'));
+g.run('specials=Array(N).fill(null);board=Array(N).fill(2n);board[0]=2n;board[1]=8n;board[2]=32n;');assert.equal(g.run('validPath([0,1,2])'),true);assert.equal(g.run('merged([0,1,2])'),64n);g.run('board[1]=2n;board[2]=4n');assert.equal(g.run('validPath([0,1,2])'),false);
+g.run("specials[1]='rainbow';board[2]=32n");assert.equal(g.run('routeOptions([0,1,2])[0].values[1]'),8n);
+g.run('board[0]=1n<<99n;board[1]=1n<<99n;specials=Array(N).fill(null)');assert.equal(g.run('merged([0,1])'),1n<<100n);g.run('score=1n<<100n;score-=2n');assert.equal(g.run('score'),(1n<<100n)-2n);
+g.run("specials=Array(N).fill(null);specials[6]='bomb';specials[7]='bomb';board=Array(N).fill(4n)");assert.equal(g.run('blastFor([5,6]).detonated.size'),2);assert.equal(g.run('blastFor([5,6]).cleared.has(5)'),false);assert.equal(g.run('blastFor([5,6]).bonus'),24n);
+g.run('const plan=planFall(board,[0,5,10],16n,()=>2n,Array(N).fill(null),new Set(),()=>null)');assert.equal(g.run('plan.board.length'),35);assert.equal(g.run('plan.moves.find(m=>m.merged).to'),10);assert.equal(g.run('plan.moves.filter(m=>m.fresh).length'),2);
+g.run("startGame('normal','NORMAL');board[0]=1n<<120n;score=(1n<<120n)+2n;save()");const normal=g.run('encode(snapshot())');g.run("startGame('tile100','TA');checkTarget(1n<<101n,1234);settleRun()");assert.equal(g.run('records.at(-1).elapsed'),1234);assert.equal(g.run('records.at(-1).status'),'complete');assert.equal(g.run('normalSave.board[0]'),(1n<<120n).toString());assert.equal(g.run('cleanRecord(records.at(-1))!==null'),true);
+g.run("startGame('score60','CLOCK')");g.time(60001);assert.equal(g.run('inputAllowed()'),false);assert.equal(g.run('run.status'),'complete');assert.equal(g.run('records.at(-1).elapsed'),60000);
+const legacy={board:Array(35).fill(4),specials:Array(35).fill(null),score:12345,best:50000,energy:25,fever:0};const old=game({'overdrive2248-v1':JSON.stringify(legacy)});assert.equal(old.run('score'),12345n);assert.equal(old.run('best'),50000n);assert.equal(old.run('run.seed'),'LEGACY');old.run('save()');const restored=game(old.data);assert.equal(restored.run('score'),12345n);
+// Every valid move preserves source order within each column.
+for(let t=0;t<100;t++){g.run(`board=Array.from({length:N},(_,i)=>2n**BigInt(i+1));specials=Array(N).fill(null);const selection${t}=[${t%5},${t%5+5}];const fall${t}=planFall(board,selection${t},128n,()=>2n,specials,new Set([${(t+1)%5}]));`);assert.equal(g.run(`fall${t}.board.length`),35);assert.equal(g.run(`new Set(fall${t}.moves.map(m=>m.to)).size`),35);}
+console.log('PASS: seeded deal/rescue isolation, ratios/rainbows, exact 2^100 arithmetic, bombs, gravity, mode saves, TA/clock, legacy migration');
+
+(async()=>{
+const c=game();c.run("startGame('normal','BOMB');board=Array(N).fill(4n);specials=Array(N).fill(null);specials[6]='bomb';score=100n;path=[5,6];render();");await c.run('commit()');assert.equal(c.run('score'),96n);assert.equal(c.run('busy'),false);c.run("$('undo').onclick()");assert.equal(c.run('score'),100n);assert.equal(c.run('specials[6]'),'bomb');
+c.run("startGame('tile100','BIG');board=Array(N).fill(2n);board[0]=1n<<99n;board[1]=1n<<99n;specials=Array(N).fill(null);path=[0,1];render();");c.time(1500);await c.run('commit()');assert.equal(c.run('run.status'),'complete');assert.equal(c.run('records.at(-1).maxExponent'),100);assert.equal(c.run('records.at(-1).score'),(1n<<100n).toString());
+console.log('PASS: complete async bomb penalty/undo and 2^100 timed finish');
+})().catch(e=>{console.error(e);process.exitCode=1;});

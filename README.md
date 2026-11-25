@@ -1,48 +1,82 @@
 # 2248 OVERDRIVE
 
-Buildless static game in dist/. Competition rules version: overdrive-2.
+横5×縦7の盤面で数字をなぞって合体する、ビルド不要のブラウザパズルです。通常プレイ、シード付きのタイム競技、補充デッキを育てるローグライトで遊べます。
 
-## 起動とFirebase設定
+## 起動
 
-リポジトリのルートで `python3 -m http.server 8000 --directory dist` を実行し、`http://localhost:8000` を開きます。設定なしならローカル保存で遊べます。Firebase SDK・認証・DBには接続しません。
+リポジトリのルートで次のコマンドを実行し、[http://localhost:8000](http://localhost:8000) を開きます。起動にFirebaseの設定は不要です。
 
-クラウド同期を使う場合だけ、`dist/firebase-config.example.json` を `dist/firebase-config.json` にコピーし、自分のFirebaseコンソールに表示されるWebアプリ設定に置き換えてください。必須は `apiKey`・`authDomain`・`projectId`・`appId`。追加のFirebase設定項目も記述できます。
+```sh
+python3 -m http.server 8000 --directory dist
+```
 
-`firebase-config.json` はGit管理対象外です。ホスティング先にもこのファイルを別途配置してください。FirebaseのWeb設定はブラウザから見える公開用識別情報であり、秘密鍵を入れる場所ではありません。管理者用サービスアカウントは使いません。
+## 遊び方
 
-設定がない場合は「クラウド同期 未設定」、設定不正なら「設定エラー」と表示され、ゲームと端末内の記録保存はそのまま使えます。設定ファイルは起動時に読み込むので、変更後は再読み込みしてください。
+- 上下左右に隣り合うタイルを2枚以上つなぎます。最初の2枚で決まる倍率（×1、×2、×4）を最後まで維持します。たとえば `2 → 8 → 32` は有効です。斜めの接続や同じマスの再使用はできません。
+- 指やマウスを離すと、合計以上で最小の2の累乗に合体します。タップでつなぎ、最後のマスを再タップしても確定できます。合体は最後のマスで起き、空いた分だけ各列が落ちて上から補充されます。
+- 5枚以上つなぐと、合体で得る点が2倍になります。チャージが100に達すると次の5手がフィーバーになり、合体の点がさらに2倍になります。
+- **爆弾**は数字としてつなげると上下左右を消し、隣の爆弾にも連鎖します。ルート外で消したタイルの値の合計（虹は2）を、倍率適用後の得点から引きます。累計スコアの下限は0です。
+- **虹**はルートに必要な数字の代わりになります。たとえば `2 → 虹 → 32` は虹を8として扱います。確定時に倍率の候補が複数あれば最小の倍率を使い、虹だけのルートは2から始めます。
+- 手詰まり時はランダムな隣接ペアを選び、片方の数字を変えて接続可能にします。最大値を下げる変更は行いません。
+- 通常・スコアタ・タイルTAでは、各配牌・補充タイルの抽選で爆弾が4%、虹が3%です。ローグライトではデッキと爆弾率で決まります。
 
-設定値を差し替えても既存ブラウザのローカル記録は残り、ログイン後に選んだFirebaseへ同期されます。別の環境の記録を混ぜたくない場合はブラウザプロファイルを分けてください。
+## モードと記録
 
-- Normal mode migrates overdrive2248-v1 without deleting it; legacy numbers convert to BigInt (rounding already present in an old score cannot be recovered).
-- Normal saves remain separate from competition. Scores use decimal strings for local/Firestore persistence and BigInt arithmetic.
-- Score attack: 60 / 600 seconds. Tile TA: exponent 11 / 20 / 50 / 100, reaching or exceeding qualifies.
-- Timer begins at Start; includes animation, dialogs, background time, and reload downtime. A move must be accepted before the deadline. Accepted moves count their full outcome even if animation crosses the deadline. TA stops at accepted move time once that merge produces its target. No hint or undo in competition.
-- Bomb collateral subtracts nominal values (rainbow=2); selected tiles do not incur collateral penalties. Bonuses multiply merge gain only; floor score at zero.
-- Seeded LCG uint32 streams for dealing and deadlock rescue; visual randomness is independent. Tile number and type each consume one dealing draw. Initial type draws precede initial number draws (kept stable for this version). Refill order is columns left to right, rows top to bottom. Supply value distribution depends on the pre-move maximum; equal seeds alone don't guarantee identical numeric tiles after different moves. Undo restores both streams.
-- Histories / personal leaderboards are local-first, import/export JSON. Abandoned runs stay in history, only completions rank. Import and synced results are unverified personal records, not anti-cheat verified public rankings.
+| モード | ルール |
+| --- | --- |
+| 通常 | 時間制限なし。ヒントと1手戻す操作が使えます。盤面と自己ベストはブラウザに保存します。 |
+| スコアアタック | 1分または10分でスコアを競います。期限前に受理された手は、演出が期限をまたいでも得点に入ります。 |
+| タイルTA | 2048・2²⁰・2⁵⁰・2¹⁰⁰のいずれかを選びます。目標以上のタイルを合体で作った手の受理時刻が記録になります。 |
+| ローグライト | 補充デッキを編集しながら全10ステージの踏破を目指します。時間制限はありません。 |
 
-## Firebase setup
+スコアタとタイルTAの時計は「開始」から進み、演出中、ダイアログを開いている間、バックグラウンド中、再読み込みまでの経過時間を含みます。通常とローグライトの途中盤面は別々に保存され、モードメニューから再開できます。
 
-Use your own Firebase project. Firebase web config is public client configuration, not an administrator credential.
+開始時にシードを入力するか、空欄でランダムに開始できます。盤面上部のシードボタンでコピーでき、結果画面から同じシードで再挑戦できます。
 
-1. Create Firestore **Standard**, **Native mode**, default database `(default)` (not SQL Connect / Cloud SQL). Production mode initially denies client access.
-2. Enable Google provider in Authentication. Add your deployment hostname to authorized domains (and `localhost` for local development).
-3. In the game, sign in with Google, open 同期設定, and copy 自分専用ルール. Paste in Firestore Rules and Publish. The generated rules restrict all record access to that single UID.
-4. Press 同期する. Records sync under `users/{uid}/records/{recordId}`. Active boards and normal saves stay browser-local. No server credentials, Cloud Functions, Analytics, Storage, or public leaderboard needed.
+「履歴・自己ランキング」では、モードや現在のシードで絞り込み、記録をJSONで入出力できます。途中終了とローグライトの踏破失敗は履歴に残ります。自己ランキングは完走した記録が対象で、スコアタとローグライトは得点順、タイルTAはタイム順です。インポートや同期で取り込んだ記録も個人用の記録として扱います。
 
-Only when a valid configuration is present, the client loads Firebase SDK from Google's CDN and restores the Google sign-in session automatically. Cloud errors never discard local records. Firebase project resources / provider / authorized domains / rules cannot be configured by merely supplying firebaseConfig; the owner must complete these console steps. Cross-device Google login and actual Firestore read/write require live account verification.
+## ローグライト
 
-Tests: `node tests/game.test.cjs`. Browser preview via Sites preview daemon.
+各ステージの基本手数は12手。ステージ `n` のノルマは `2^(n+6)` 点（ステージ1は128点、ステージ10は65,536点）です。巻き添えの減点はステージ進捗にも反映し、下限は0です。最後の1手でノルマに届けばクリアになります。盤面・累計スコア・フィーバーは次へ持ち越し、ステージ進捗は0から始まります。
 
-## Roguelite (deck version 1)
+初期デッキは2が5枚、4が4枚、8が3枚です。引いたカードはその周回の山札から抜け、引き切ると全カードを混ぜ直します。数字カードは引くたびに独立して爆弾を抽選します（初期値8%、範囲0〜40%）。虹はデッキ内のカードとして引きます。デッキの枚数は4〜40枚、数字カードの値は2〜2²⁵⁶です。手詰まり救済ではデッキにない数字が盤面にできることもあります。
 
-Select ローグライト in the mode menu. Ten stages, twelve accepted moves per stage. Stage net points must reach `2^(stage+6)` (128 at stage 1, 65,536 at stage 10). Bomb collateral subtracts from stage progress with a floor of zero. Meeting the goal on the last hand wins before the budget check. Stage overflow is not carried into the next quota; board, total score and fever are carried. No time limit, hints or undo.
+### ステージ報酬
 
-Initial supply deck: five 2s, four 4s, three 8s. Shuffle without replacement; after every full cycle reshuffle the whole deck. Each numeric draw independently becomes a bomb with 8% initial probability. A rainbow is a deck card and cannot also be a bomb. Deck changes never mutate existing board tiles. Reward acceptance resets the draw pile so the revised deck is effective on the next refill. Deadlock protection is unchanged and may make numbers outside the supply deck.
+ステージ1〜9のクリア後、条件を満たす重複なしの3候補から1つ選びます。候補ごとに、選べる報酬が残っているランクを下表の重みで抽選し、そのランク内の候補から等確率で1つ引きます。盤面に爆弾があるときだけ「導火線カット」が候補に入るなど、候補は盤面やデッキの状態によって変わります。
 
-After stages 1–9: choose one of three seeded, distinct eligible rewards. Add the next largest number; add rainbow; remove/halve/double one chosen numeric card; double all numbers; halve all numbers (2 stays 2); bomb probability -3 or +4 percentage points (0–40%). Target choices group identical cards by value. The numeric exponent cap is 256; minimum deck size four. Reward RNG is independent from refill and rescue RNG, and its offers persist through reload. No new effects beyond the discussed deck/probability controls.
+| ランク | 抽選の重み | 報酬 |
+| --- | ---: | --- |
+| コモン | 65 | 数字カード1枚を削除、1枚を2倍、1枚を半分、数字カードをすべて半分、爆弾率＋4ポイント、導火線カット |
+| レア | 25 | デッキ最大の数字の2倍を1枚追加、選んだ数字を最大2枚まで2倍、爆弾率−3ポイント |
+| エピック | 10 | 選んだ数字を最大3枚まで2倍、数字カードをすべて2倍、手数＋2、虹を1枚追加 |
 
-Normal and roguelite saves are held separately. Switching to normal suspends the roguelite; resume via ローグライトの続きへ. Starting a new roguelite abandons the current one. Stage, quota, hands, bag position, deck, reward choices and upgrade log persist locally. Completed/failed run score, max tile and duration enter the existing personal history and Firebase sync using the existing record schema and Rules; full runs are eligible for the personal leaderboard. No new Firestore Rules deployment is required. Stage/deck details are in the local run, not the cloud record.
+- **導火線カット**は盤面の爆弾を1個選び、数字を残して爆弾効果だけを解除します。
+- **手数＋2**は次のステージ以降すべてに適用され、重ねて取得できます。
+- 数字を選ぶ報酬は同じ値のカードをまとめて表示します。半減の下限は2です。
+- 報酬確定後は更新したデッキを混ぜ直し、次の補充から適用します。カードの値の変更は盤面に出ているタイルには反映されません。
 
-Tests: `node tests/rogue.test.cjs` covers weighted cycles, bomb isolation, rainbow count, seed replay, upgrade edits, normal/rogue save separation, reward restoration and fail/clear priority.
+「デッキを見る」では、カードの内訳と割合、爆弾率、山札の残り枚数、取得した報酬を確認できます。報酬の候補も途中保存され、再読み込み後に同じ候補から選べます。新しいローグライトを始めると進行中のローグライトは途中終了になります。
+
+## Firebaseで端末間同期（任意）
+
+設定なしでも遊べ、記録はブラウザに保存されます。同期を使う場合は `dist/firebase-config.example.json` を `dist/firebase-config.json` にコピーし、自分のFirebaseプロジェクトのWebアプリ設定を記入します。必須項目は `apiKey`、`authDomain`、`projectId`、`appId` です。
+
+`firebase-config.json` はGit管理外なので、ホスティング先にも別途配置します。ここに入れるのは公開用のWebアプリ設定です。起動時に読み込むため、変更後はページを再読み込みします。設定ファイルがなければ「クラウド同期 未設定」、設定値が不正なら「設定エラー」と表示され、端末内保存は引き続き使えます。
+
+1. FirebaseでFirestore **Standard** の **Native mode**、既定のデータベース `(default)` を作ります。本番環境モードは初期状態でクライアントアクセスを拒否します。
+2. AuthenticationでGoogleログインを有効にし、承認済みドメインに配信先のホスト名を追加します。ローカルで試す場合は `localhost` も追加します。
+3. ゲームで「Googleログイン」後、「同期設定」から「自分専用ルールをコピー」を選びます。Firestoreの「ルール」に貼って公開します。ルールはログインした本人のUIDだけに記録へのアクセスを許可します。
+4. 「同期する」で確認します。同期先は `users/{uid}/records/{recordId}` です。有効な設定がある場合にFirebase SDKを読み込み、ログイン状態を復元します。ログイン後は記録の追加・インポート時などにも同期します。
+
+同期対象はスコアタ・タイルTA・ローグライトの結果です。進行中の盤面、通常セーブ、ローグライトのデッキやステージの内訳はブラウザ内に保存されます。同期エラーで端末内の記録が消えることはありません。接続先プロジェクトを変更すると、同じブラウザに残る記録はログイン後に新しい接続先にも同期されます。環境ごとに記録を分ける場合はブラウザプロファイルを分けます。
+
+## 実装とテスト
+
+- 競技ルールの識別子は `overdrive-2` です。タイルと得点は `BigInt` で計算し、保存時は10進文字列にします。従来の通常セーブ `overdrive2248-v1` は元のデータを残して移行します。旧スコアですでに失われた桁の精度は復元できません。
+- 補充と手詰まり救済はシードから作る別々の32ビット乱数列を使い、演出の乱数も独立しています。通常・スコアタ・タイルTAでは初期配置の特殊効果を先にすべて抽選し、その後に数字を抽選します。補充順は列の左から右、列内は上から下です。通常・スコアタ・タイルTAで補充される数字の範囲は、手を打つ前の盤面の最大値で変わります。同じ展開を再現するにはシードと操作をそろえます。通常の「ひとつ戻す」は補充・救済の乱数状態も復元します。ローグライトの報酬抽選には専用の乱数列を使います。
+
+```sh
+node tests/game.test.cjs
+node tests/rogue.test.cjs
+```
